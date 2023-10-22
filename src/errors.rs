@@ -11,7 +11,7 @@ pub enum AMMError<M>
 where
     M: Middleware,
 {
-    #[error("Middleware error")]
+    #[error("Middleware error: {0}")]
     MiddlewareError(<M as Middleware>::Error),
     #[error("Provider error")]
     ProviderError(#[from] ProviderError),
@@ -31,11 +31,11 @@ where
     FromHexError,
     #[error("Uniswap V3 math error")]
     UniswapV3MathError(#[from] UniswapV3MathError),
-    #[error("Pair for token_a/token_b does not exist in provided dexes")]
+    #[error("Pair for token_a=`{0}`/token_b=`{1}` does not exist in provided dexes")]
     PairDoesNotExistInDexes(H160, H160),
     #[error("Could not initialize new pool from event log")]
     UnrecognizedPoolCreatedEventLog,
-    #[error("Error when syncing pool")]
+    #[error("Error when syncing pool `{0}`")]
     SyncError(H160),
     #[error("Error when getting pool data")]
     PoolDataError,
@@ -55,7 +55,7 @@ where
     BlockNumberNotFound,
     #[error("Swap simulation error")]
     SwapSimulationError(#[from] SwapSimulationError),
-    #[error("Invalid data from batch request")]
+    #[error("Invalid data from batch request `{0}`")]
     BatchRequestError(H160),
     #[error("Checkpoint error")]
     CheckpointError(#[from] CheckpointError),
