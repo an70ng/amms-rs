@@ -765,33 +765,41 @@ impl UniswapV3Pool {
         Ok(self.get_slot_0(middleware).await?.0)
     }
 
-    pub fn sync_from_burn_log(&mut self, log: Log) -> Result<(), AbiError> {
+    pub fn sync_from_burn_log(&mut self, log: Log) -> Result<(), EventLogError> {
+        let block_number = log.block_number.unwrap_or_default();
         let burn_event = BurnFilter::decode_log(&RawLog::from(log))?;
 
         self.modify_position(
             burn_event.tick_lower,
             burn_event.tick_upper,
             -(burn_event.amount as i128),
-        );
+        )
+        .map_err(|e| 
+            EventLogError::PoolArithmeticError(self.address, block_number, e)
+        )?;
 
         Ok(())
     }
 
-    pub fn sync_from_mint_log(&mut self, log: Log) -> Result<(), AbiError> {
+    pub fn sync_from_mint_log(&mut self, log: Log) -> Result<(), EventLogError> {
+        let block_number = log.block_number.unwrap_or_default();
         let mint_event = MintFilter::decode_log(&RawLog::from(log))?;
 
         self.modify_position(
             mint_event.tick_lower,
             mint_event.tick_upper,
             mint_event.amount as i128,
-        );
+        )
+        .map_err(|e| 
+            EventLogError::PoolArithmeticError(self.address, block_number, e)
+        )?;
 
         Ok(())
     }
 
-    pub fn modify_position(&mut self, tick_lower: i32, tick_upper: i32, liquidity_delta: i128) {
+    pub fn modify_position(&mut self, tick_lower: i32, tick_upper: i32, liquidity_delta: i128) -> Result<(), ArithmeticError> {
         //We are only using this function when a mint or burn event is emitted, therefore we do not need to checkTicks as that has happened before the event is emitted
-        self.update_position(tick_lower, tick_upper, liquidity_delta);
+        self.update_position(tick_lower, tick_upper, liquidity_delta)?;
 
         if liquidity_delta != 0 {
             //if the tick is between the tick lower and tick upper, update the liquidity between the ticks
@@ -803,15 +811,17 @@ impl UniswapV3Pool {
                 }
             }
         }
+
+        Ok(())
     }
 
-    pub fn update_position(&mut self, tick_lower: i32, tick_upper: i32, liquidity_delta: i128) {
+    pub fn update_position(&mut self, tick_lower: i32, tick_upper: i32, liquidity_delta: i128) -> Result<(), ArithmeticError> {
         let mut flipped_lower = false;
         let mut flipped_upper = false;
 
         if liquidity_delta != 0 {
-            flipped_lower = self.update_tick(tick_lower, liquidity_delta, false);
-            flipped_upper = self.update_tick(tick_upper, liquidity_delta, true);
+            flipped_lower = self.update_tick(tick_lower, liquidity_delta, false)?;
+            flipped_upper = self.update_tick(tick_upper, liquidity_delta, true)?;
             if flipped_lower {
                 self.flip_tick(tick_lower, self.tick_spacing);
             }
@@ -829,9 +839,11 @@ impl UniswapV3Pool {
                 self.ticks.remove(&tick_upper);
             }
         }
+
+        Ok(())
     }
 
-    pub fn update_tick(&mut self, tick: i32, liquidity_delta: i128, upper: bool) -> bool {
+    pub fn update_tick(&mut self, tick: i32, liquidity_delta: i128, upper: bool) -> Result<bool, ArithmeticError> {
         let info = match self.ticks.get_mut(&tick) {
             Some(info) => info,
             None => {
@@ -845,6 +857,9 @@ impl UniswapV3Pool {
         let liquidity_gross_before = info.liquidity_gross;
 
         let liquidity_gross_after = if liquidity_delta < 0 {
+            if liquidity_gross_before < (-liquidity_delta) as u128 {
+                return Err(ArithmeticError::UniswapV3TickUnderflow);
+            }
             liquidity_gross_before - ((-liquidity_delta) as u128)
         } else {
             liquidity_gross_before + (liquidity_delta as u128)
@@ -866,7 +881,7 @@ impl UniswapV3Pool {
             info.liquidity_net + liquidity_delta
         };
 
-        flipped
+        Ok(flipped)
     }
 
     pub fn flip_tick(&mut self, tick: i32, tick_spacing: i32) {

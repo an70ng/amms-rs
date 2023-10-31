@@ -1,6 +1,6 @@
 use ethers::prelude::{AbiError, ContractError};
 use ethers::providers::{Middleware, ProviderError};
-use ethers::types::{H160, U256};
+use ethers::types::{H160, U256, U64};
 use std::time::SystemTimeError;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -31,11 +31,11 @@ where
     FromHexError,
     #[error("Uniswap V3 math error")]
     UniswapV3MathError(#[from] UniswapV3MathError),
-    #[error("Pair for token_a=`{0}`/token_b=`{1}` does not exist in provided dexes")]
+    #[error("Pair for token_a=`{0:#x}`/token_b=`{1:#x}` does not exist in provided dexes")]
     PairDoesNotExistInDexes(H160, H160),
     #[error("Could not initialize new pool from event log")]
     UnrecognizedPoolCreatedEventLog,
-    #[error("Error when syncing pool `{0}`")]
+    #[error("Error when syncing pool `{0:#x}`")]
     SyncError(H160),
     #[error("Error when getting pool data")]
     PoolDataError,
@@ -55,7 +55,7 @@ where
     BlockNumberNotFound,
     #[error("Swap simulation error")]
     SwapSimulationError(#[from] SwapSimulationError),
-    #[error("Invalid data from batch request `{0}`")]
+    #[error("Invalid data from batch request `{0:#x}`")]
     BatchRequestError(H160),
     #[error("Checkpoint error")]
     CheckpointError(#[from] CheckpointError),
@@ -75,6 +75,8 @@ pub enum ArithmeticError {
     U128ConversionError,
     #[error("Uniswap v3 math error")]
     UniswapV3MathError(#[from] UniswapV3MathError),
+    #[error("Uniswap v3 tick underflow")]
+    UniswapV3TickUnderflow,
 }
 
 #[derive(Error, Debug)]
@@ -87,6 +89,8 @@ pub enum EventLogError {
     EthABIError(#[from] ethers::abi::Error),
     #[error("ABI error")]
     ABIError(#[from] AbiError),
+    #[error("Pool `{0:#x}` arithmetic error at block {1}: {2}")]
+    PoolArithmeticError(H160, U64, ArithmeticError),
 }
 
 #[derive(Error, Debug)]
