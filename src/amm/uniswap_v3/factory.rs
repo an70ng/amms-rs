@@ -199,6 +199,15 @@ impl UniswapV3Factory {
             .await?;
 
         for (_, log_group) in ordered_logs {
+            // Sorting logs by their actual index within a block.
+            // For some reason log order, at least returned by Alchemy, might be inconsistent
+            // with actual tx order within a block. For example for pool:
+            // https://etherscan.io/address/0x6e229c972d9f69c15bdc7b07f385d2025225e72b#events
+            // (filter by block 17731729)
+            // `Burn` event was returned before `Mint` causing integer underflow
+            // of liquidity_gross.
+            let mut log_group = log_group.clone();
+            log_group.sort_by(|a, b| a.log_index.cmp(&b.log_index));
             for log in log_group {
                 let event_signature = log.topics[0];
 
