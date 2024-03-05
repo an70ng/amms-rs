@@ -207,15 +207,17 @@ impl ERC4626Vault {
         //Initialize a new instance of the vault
         let vault = IERC4626Vault::new(self.vault_token, middleware);
         // Get the total assets in the vault
-        let total_assets = match vault.total_assets().call().await {
-            Ok(total_assets) => total_assets,
-            Err(e) => return Err(AMMError::ContractError(e)),
-        };
+        let total_assets = vault
+            .total_assets()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("total_assets", self.vault_token, e))?;
         // Get the total supply of the vault token
-        let total_supply = match vault.total_supply().call().await {
-            Ok(total_supply) => total_supply,
-            Err(e) => return Err(AMMError::ContractError(e)),
-        };
+        let total_supply = vault
+            .total_supply()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("total_supply", self.vault_token, e))?;
 
         Ok((total_supply, total_assets))
     }

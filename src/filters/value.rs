@@ -153,7 +153,7 @@ async fn get_weth_value_in_amm_batch_request<M: Middleware>(
     weth_value_in_token_to_weth_pool_threshold: U256,
     middleware: Arc<M>,
 ) -> Result<Vec<U256>, AMMError<M>> {
-    let mut weth_values_in_pools = vec![];
+    let batch_start = amms.first().map(|a| a.address()).unwrap_or_default();
 
     let amms = amms
         .iter()
@@ -181,14 +181,19 @@ async fn get_weth_value_in_amm_batch_request<M: Middleware>(
         Token::Uint(weth_value_in_token_to_weth_pool_threshold),
     ]);
 
-    let deployer = GetWethValueInAMMBatchRequest::deploy(middleware, constructor_args)?;
-    let return_data: Bytes = deployer.call_raw().await?;
+    let deployer = GetWethValueInAMMBatchRequest::deploy(middleware, constructor_args)
+        .map_err(|e| AMMError::ContractError("get_weth_value_in_amm_batch_request", batch_start, e))?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_weth_value_in_amm_batch_request", batch_start, e))?;
 
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Uint(256)))],
         &return_data,
     )?;
 
+    let mut weth_values_in_pools = vec![];
     for token_array in return_data_tokens {
         if let Some(arr) = token_array.into_array() {
             for token in arr {

@@ -679,7 +679,12 @@ impl UniswapV3Pool {
     ) -> Result<U256, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
         let (word_position, _) = uniswap_v3_math::tick_bitmap::position(tick);
-        Ok(v3_pool.tick_bitmap(word_position).call().await?)
+        Ok(v3_pool
+            .tick_bitmap(word_position)
+            .call()
+            .await
+            .map_err(|e: ethers::contract::ContractError<_>| AMMError::ContractError("get_tick_word", self.address, e))?
+        )
     }
 
     pub async fn get_next_word<M: Middleware>(
@@ -688,7 +693,12 @@ impl UniswapV3Pool {
         middleware: Arc<M>,
     ) -> Result<U256, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
-        Ok(v3_pool.tick_bitmap(word_position).call().await?)
+        Ok(v3_pool
+            .tick_bitmap(word_position)
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_next_word", self.address, e))?
+        )
     }
 
     pub async fn get_tick_spacing<M: Middleware>(
@@ -696,7 +706,12 @@ impl UniswapV3Pool {
         middleware: Arc<M>,
     ) -> Result<i32, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
-        Ok(v3_pool.tick_spacing().call().await?)
+        Ok(v3_pool
+            .tick_spacing()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_tick_spacing", self.address, e))?
+        )
     }
 
     pub async fn get_tick<M: Middleware>(&self, middleware: Arc<M>) -> Result<i32, AMMError<M>> {
@@ -710,7 +725,11 @@ impl UniswapV3Pool {
     ) -> Result<(u128, i128, U256, U256, i64, U256, u32, bool), AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware.clone());
 
-        let tick_info = v3_pool.ticks(tick).call().await?;
+        let tick_info = v3_pool
+            .ticks(tick)
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_tick_info", self.address, e))?;
 
         Ok((
             tick_info.0,
@@ -747,7 +766,12 @@ impl UniswapV3Pool {
         middleware: Arc<M>,
     ) -> Result<(U256, i32, u16, u16, u16, u8, bool), AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
-        Ok(v3_pool.slot_0().call().await?)
+        Ok(v3_pool
+            .slot_0()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_slot_0", self.address, e))?
+        )
     }
 
     pub async fn get_liquidity<M: Middleware>(
@@ -755,7 +779,12 @@ impl UniswapV3Pool {
         middleware: Arc<M>,
     ) -> Result<u128, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
-        Ok(v3_pool.liquidity().call().await?)
+        Ok(v3_pool
+            .liquidity()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_liquidity", self.address, e))?
+        )
     }
 
     pub async fn get_sqrt_price<M: Middleware>(
@@ -912,12 +941,14 @@ impl UniswapV3Pool {
         let token_a_decimals = IErc20::new(self.token_a, middleware.clone())
             .decimals()
             .call()
-            .await?;
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_decimals", self.token_a, e))?;
 
         let token_b_decimals = IErc20::new(self.token_b, middleware)
             .decimals()
             .call()
-            .await?;
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_decimals", self.token_b, e))?;
 
         Ok((token_a_decimals, token_b_decimals))
     }
@@ -926,7 +957,8 @@ impl UniswapV3Pool {
         let fee = IUniswapV3Pool::new(self.address, middleware)
             .fee()
             .call()
-            .await?;
+            .await
+            .map_err(|e| AMMError::ContractError("get_fee", self.address, e))?;
 
         Ok(fee)
     }
@@ -937,12 +969,12 @@ impl UniswapV3Pool {
     ) -> Result<H160, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
 
-        let token_0 = match v3_pool.token_0().call().await {
-            Ok(result) => result,
-            Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
-        };
-
-        Ok(token_0)
+        Ok(v3_pool
+            .token_0()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_0", self.address, e))?
+        )
     }
 
     pub async fn get_token_1<M: Middleware>(
@@ -951,12 +983,12 @@ impl UniswapV3Pool {
     ) -> Result<H160, AMMError<M>> {
         let v3_pool = IUniswapV3Pool::new(self.address, middleware);
 
-        let token_1 = match v3_pool.token_1().call().await {
-            Ok(result) => result,
-            Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
-        };
-
-        Ok(token_1)
+        Ok(v3_pool
+            .token_1()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_1", self.address, e))?
+        )
     }
     /* Legend:
        sqrt(price) = sqrt(y/x)

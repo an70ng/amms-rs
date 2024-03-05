@@ -43,22 +43,25 @@ pub async fn get_pairs_batch_request<M: Middleware>(
     step: U256,
     middleware: Arc<M>,
 ) -> Result<Vec<H160>, AMMError<M>> {
-    let mut pairs = vec![];
-
     let constructor_args = Token::Tuple(vec![
         Token::Uint(from),
         Token::Uint(step),
         Token::Address(factory),
     ]);
 
-    let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware, constructor_args)?;
-    let return_data: Bytes = deployer.call_raw().await?;
+    let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware, constructor_args)
+        .map_err(|e| AMMError::ContractError("get_pairs_batch_request", factory, e))?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_pairs_batch_request", factory, e))?;
 
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Address))],
         &return_data,
     )?;
 
+    let mut pairs = vec![];
     for token_array in return_data_tokens {
         if let Some(arr) = token_array.into_array() {
             for token in arr {
@@ -78,16 +81,22 @@ pub async fn get_amm_data_batch_request<M: Middleware>(
     amms: &mut [AMM],
     middleware: Arc<M>,
 ) -> Result<(), AMMError<M>> {
-    let mut target_addresses = vec![];
-    for amm in amms.iter() {
-        target_addresses.push(Token::Address(amm.address()));
-    }
+    let batch_start = amms.first().map(|a| a.address()).unwrap_or_default();
+
+    let target_addresses = amms
+        .iter()
+        .map(|a| Token::Address(a.address()))
+        .collect::<Vec<Token>>();
 
     let constructor_args = Token::Tuple(vec![Token::Array(target_addresses)]);
 
-    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("get_amm_data_batch_request", batch_start, e))?;
 
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_amm_data_batch_request", batch_start, e))?;
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![
             ParamType::Address,   // token a
@@ -139,9 +148,13 @@ pub async fn get_v2_pool_data_batch_request<M: Middleware>(
 ) -> Result<(), AMMError<M>> {
     let constructor_args = Token::Tuple(vec![Token::Array(vec![Token::Address(pool.address)])]);
 
-    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("get_v2_pool_data_batch_request", pool.address, e))?;
 
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_v2_pool_data_batch_request", pool.address, e))?;
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![
             ParamType::Address,   // token a

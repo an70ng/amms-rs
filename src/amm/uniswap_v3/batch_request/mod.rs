@@ -49,13 +49,15 @@ pub async fn get_v3_pool_data_batch_request<M: Middleware>(
 ) -> Result<(), AMMError<M>> {
     let constructor_args = Token::Tuple(vec![Token::Array(vec![Token::Address(pool.address)])]);
 
-    let deployer = IGetUniswapV3PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
-
-    let return_data: Bytes = if let Some(block_number) = block_number {
-        deployer.block(block_number).call_raw().await?
-    } else {
-        deployer.call_raw().await?
-    };
+    let mut deployer = IGetUniswapV3PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("get_v3_pool_data_batch_request", pool.address, e))?;
+    if let Some(block_number) = block_number {
+        deployer = deployer.block(block_number);
+    }
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_v3_pool_data_batch_request", pool.address, e))?;
 
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![
@@ -111,13 +113,15 @@ pub async fn get_uniswap_v3_tick_data_batch_request<M: Middleware>(
         Token::Int(I256::from(pool.tick_spacing).into_raw()),
     ]);
 
-    let deployer = IGetUniswapV3TickDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
-
-    let return_data: Bytes = if let Some(block_number) = block_number {
-        deployer.block(block_number).call_raw().await?
-    } else {
-        deployer.call_raw().await?
-    };
+    let mut deployer = IGetUniswapV3TickDataBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("get_uniswap_v3_tick_data_batch_request", pool.address, e))?;
+    if let Some(block_number) = block_number {
+        deployer = deployer.block(block_number);
+    }
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_uniswap_v3_tick_data_batch_request", pool.address, e))?;
 
     let return_data_tokens = ethers::abi::decode(
         &[
@@ -182,9 +186,13 @@ pub async fn sync_v3_pool_batch_request<M: Middleware>(
 ) -> Result<(), AMMError<M>> {
     let constructor_args = Token::Tuple(vec![Token::Address(pool.address)]);
 
-    let deployer = ISyncUniswapV3PoolBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer = ISyncUniswapV3PoolBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("sync_v3_pool_batch_request", pool.address, e))?;
 
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("sync_v3_pool_batch_request", pool.address, e))?;
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Tuple(vec![
             ParamType::Uint(128), // liquidity
@@ -234,16 +242,21 @@ pub async fn get_amm_data_batch_request<M: Middleware>(
     block_number: u64,
     middleware: Arc<M>,
 ) -> Result<(), AMMError<M>> {
-    let mut target_addresses = vec![];
-
-    for amm in amms.iter() {
-        target_addresses.push(Token::Address(amm.address()));
-    }
+    let batch_start = amms.first().map(|a| a.address()).unwrap_or_default();
+    let target_addresses = amms
+        .iter()
+        .map(|a| Token::Address(a.address()))
+        .collect::<Vec<Token>>();
 
     let constructor_args = Token::Tuple(vec![Token::Array(target_addresses)]);
-    let deployer = IGetUniswapV3PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer = IGetUniswapV3PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)
+        .map_err(|e| AMMError::ContractError("get_amm_data_batch_request", batch_start, e))?;
 
-    let return_data: Bytes = deployer.block(block_number).call_raw().await?;
+    let return_data: Bytes = deployer
+        .block(block_number)
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_amm_data_batch_request", batch_start, e))?;
 
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![

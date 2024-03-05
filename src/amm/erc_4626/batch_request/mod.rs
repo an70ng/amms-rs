@@ -70,9 +70,16 @@ pub async fn get_4626_vault_data_batch_request<M: Middleware>(
     let constructor_args =
         Token::Tuple(vec![Token::Array(vec![Token::Address(vault.vault_token)])]);
 
-    let deployer = IGetERC4626VaultDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer = IGetERC4626VaultDataBatchRequest::deploy(
+        middleware.clone(), 
+        constructor_args,
+    )
+    .map_err(|e| AMMError::ContractError("get_4626_vault_data_batch_request", vault.vault_token, e))?;
 
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|e| AMMError::ProviderError("get_4626_vault_data_batch_request", vault.vault_token, e))?;
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![
             ParamType::Address,   // vault token

@@ -57,7 +57,11 @@ impl UniswapV2Factory {
     ) -> Result<Vec<AMM>, AMMError<M>> {
         let factory = IUniswapV2Factory::new(self.address, middleware.clone());
 
-        let pairs_length: U256 = factory.all_pairs_length().call().await?;
+        let pairs_length: U256 = factory
+            .all_pairs_length()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_all_pairs_via_batched_calls", self.address, e))?;
 
         let mut pairs = vec![];
         let step = 766; //max batch size for this call until codesize is too large

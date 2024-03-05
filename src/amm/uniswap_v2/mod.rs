@@ -264,10 +264,11 @@ impl UniswapV2Pool {
         //Initialize a new instance of the Pool
         let v2_pair = IUniswapV2Pair::new(self.address, middleware);
         // Make a call to get the reserves
-        let (reserve_0, reserve_1, _) = match v2_pair.get_reserves().call().await {
-            Ok(result) => result,
-            Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
-        };
+        let (reserve_0, reserve_1, _) = v2_pair
+            .get_reserves()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_reserves", self.address, e))?;
 
         Ok((reserve_0, reserve_1))
     }
@@ -279,12 +280,14 @@ impl UniswapV2Pool {
         let token_a_decimals = IErc20::new(self.token_a, middleware.clone())
             .decimals()
             .call()
-            .await?;
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_decimals", self.token_a, e))?;
 
         let token_b_decimals = IErc20::new(self.token_b, middleware)
             .decimals()
             .call()
-            .await?;
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_decimals", self.token_b, e))?;
 
         Ok((token_a_decimals, token_b_decimals))
     }
@@ -296,12 +299,12 @@ impl UniswapV2Pool {
     ) -> Result<H160, AMMError<M>> {
         let v2_pair = IUniswapV2Pair::new(pair_address, middleware);
 
-        let token0 = match v2_pair.token_0().call().await {
-            Ok(result) => result,
-            Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
-        };
-
-        Ok(token0)
+        Ok(v2_pair
+            .token_0()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_0", pair_address, e))?
+        )
     }
 
     pub async fn get_token_1<M: Middleware>(
@@ -311,12 +314,12 @@ impl UniswapV2Pool {
     ) -> Result<H160, AMMError<M>> {
         let v2_pair = IUniswapV2Pair::new(pair_address, middleware);
 
-        let token1 = match v2_pair.token_1().call().await {
-            Ok(result) => result,
-            Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
-        };
-
-        Ok(token1)
+        Ok(v2_pair
+            .token_1()
+            .call()
+            .await
+            .map_err(|e| AMMError::ContractError("get_token_1", pair_address, e))?
+        )
     }
 
     pub fn calculate_price_64_x_64(&self, base_token: H160) -> Result<u128, ArithmeticError> {

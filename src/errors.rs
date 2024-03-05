@@ -12,11 +12,11 @@ where
     M: Middleware,
 {
     #[error("Middleware error: {0}")]
-    MiddlewareError(<M as Middleware>::Error),
-    #[error("Provider error")]
-    ProviderError(#[from] ProviderError),
-    #[error("Contract error")]
-    ContractError(#[from] ContractError<M>),
+    MiddlewareError(<M as Middleware>::Error), // [source] requires static lifetime here
+    #[error("Provider error at {0} for {1:#x}")]
+    ProviderError(&'static str, H160, #[source] ProviderError),
+    #[error("Contract error at {0} for {1:#x}")]
+    ContractError(&'static str, H160, #[source] ContractError<M>),
     #[error("ABI Codec error")]
     ABICodecError(#[from] AbiError),
     #[error("Eth ABI error")]
