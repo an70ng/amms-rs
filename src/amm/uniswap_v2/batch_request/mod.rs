@@ -33,6 +33,7 @@ fn populate_pool_data_from_tokens(
     pool.token_b_decimals = tokens[3].to_owned().into_uint()?.as_u32() as u8;
     pool.reserve_0 = tokens[4].to_owned().into_uint()?.as_u128();
     pool.reserve_1 = tokens[5].to_owned().into_uint()?.as_u128();
+    pool.last_active_at = tokens[6].to_owned().into_uint()?.as_u32();
 
     Some(pool)
 }
@@ -105,6 +106,7 @@ pub async fn get_amm_data_batch_request<M: Middleware>(
             ParamType::Uint(8),   // token b decimals
             ParamType::Uint(112), // reserve 0
             ParamType::Uint(112), // reserve 1
+            ParamType::Uint(32),  // block timestamp last 
         ])))],
         &return_data,
     )?;
@@ -163,6 +165,7 @@ pub async fn get_v2_pool_data_batch_request<M: Middleware>(
             ParamType::Uint(8),   // token b decimals
             ParamType::Uint(112), // reserve 0
             ParamType::Uint(112), // reserve 1
+            ParamType::Uint(32),  // block timestamp last 
         ])))],
         &return_data,
     )?;

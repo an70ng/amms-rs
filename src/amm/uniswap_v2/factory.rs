@@ -123,14 +123,16 @@ impl AutomatedMarketMakerFactory for UniswapV2Factory {
         log: Log,
         middleware: Arc<M>,
     ) -> Result<AMM, AMMError<M>> {
+        let block_number = log.block_number;
         let pair_created_event: PairCreatedFilter =
             PairCreatedFilter::decode_log(&RawLog::from(log))?;
         Ok(AMM::UniswapV2Pool(
-            UniswapV2Pool::new_from_address(pair_created_event.pair, self.fee, middleware).await?,
+            UniswapV2Pool::new_from_address(pair_created_event.pair, self.fee, block_number, middleware).await?,
         ))
     }
 
     fn new_empty_amm_from_log(&self, log: Log) -> Result<AMM, ethers::abi::Error> {
+        let block_number = log.block_number.unwrap_or_default().as_u64();
         let pair_created_event = PairCreatedFilter::decode_log(&RawLog::from(log))?;
 
         Ok(AMM::UniswapV2Pool(UniswapV2Pool {
@@ -142,6 +144,8 @@ impl AutomatedMarketMakerFactory for UniswapV2Factory {
             reserve_0: 0,
             reserve_1: 0,
             fee: 0,
+            last_active_at: 0,
+            last_active_at_block: block_number,
         }))
     }
 
@@ -160,7 +164,7 @@ impl AutomatedMarketMakerFactory for UniswapV2Factory {
         _block_number: Option<u64>,
         middleware: Arc<M>,
     ) -> Result<(), AMMError<M>> {
-        let step = 127; //Max batch size for call
+        let step = 109; //Max batch size for call
         for amm_chunk in amms.chunks_mut(step) {
             batch_request::get_amm_data_batch_request(amm_chunk, middleware.clone()).await?;
         }

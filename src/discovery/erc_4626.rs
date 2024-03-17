@@ -1,8 +1,8 @@
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use std::{collections::HashSet, collections::HashMap, str::FromStr, sync::Arc};
 
 use ethers::{
     providers::Middleware,
-    types::{Filter, U256},
+    types::{Filter, U64, U256},
 };
 use regex::Regex;
 use spinoff::{spinners, Color, Spinner};
@@ -39,6 +39,7 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
     let mut adheres_to_withdraw_event = HashSet::new();
     let mut adheres_to_deposit_event = HashSet::new();
     let mut identified_addresses = HashSet::new();
+    let mut address_last_active = HashMap::new();
 
     let mut from_block = 0;
     //TODO: make this async
@@ -90,8 +91,10 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
         for log in logs {
             if log.topics[0] == DEPOSIT_EVENT_SIGNATURE {
                 adheres_to_deposit_event.insert(log.address);
+                address_last_active.insert(log.address, log.block_number);
             } else if log.topics[0] == WITHDRAW_EVENT_SIGNATURE {
                 adheres_to_withdraw_event.insert(log.address);
+                address_last_active.insert(log.address, log.block_number);
             }
         }
     }
@@ -107,8 +110,10 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
         //TODO: Add an interface check, but for now just try to get a new vault from address, if it fails then do not add it to the identified
         //TODO: vaults. This approach is inefficient but should work for now.
 
+        let block_number = address_last_active
+            .get(identified_address).copied().flatten().as_ref().map(U64::as_u64);
         if let Ok(vault) =
-            ERC4626Vault::new_from_address(*identified_address, middleware.clone()).await
+            ERC4626Vault::new_from_address(*identified_address, block_number, middleware.clone()).await
         {
             vaults.push(vault);
         }

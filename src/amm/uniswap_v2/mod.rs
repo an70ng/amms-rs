@@ -8,7 +8,7 @@ use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256},
+    types::{Log, H160, H256, U64, U256},
 };
 use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,10 @@ pub struct UniswapV2Pool {
     pub reserve_0: u128,
     pub reserve_1: u128,
     pub fee: u32,
+    /// Unix timestamp of block the pool reserves were updated last (might be out of sync with `last_active_at_block`)
+    pub last_active_at: u32, 
+    /// Number of block the pool was updated by logs from (might be out of sync with `last_active_at`)
+    pub last_active_at_block: u64, 
 }
 
 #[async_trait]
@@ -64,8 +68,7 @@ impl AutomatedMarketMaker for UniswapV2Pool {
     }
 
     async fn sync<M: Middleware>(&mut self, middleware: Arc<M>) -> Result<(), AMMError<M>> {
-        (self.reserve_0, self.reserve_1) = self.get_reserves(middleware).await?;
-
+        (self.reserve_0, self.reserve_1, self.last_active_at) = self.get_reserves(middleware).await?;
         Ok(())
     }
 
@@ -85,12 +88,13 @@ impl AutomatedMarketMaker for UniswapV2Pool {
 
     fn sync_from_log(&mut self, log: Log) -> Result<(), EventLogError> {
         let event_signature = log.topics[0];
-
         if event_signature == SYNC_EVENT_SIGNATURE {
+            let block_number = log.block_number; 
             let sync_event = SyncFilter::decode_log(&RawLog::from(log))?;
 
             self.reserve_0 = sync_event.reserve_0;
             self.reserve_1 = sync_event.reserve_1;
+            self.last_active_at_block = block_number.unwrap_or_default().as_u64();
 
             Ok(())
         } else {
@@ -172,6 +176,7 @@ impl UniswapV2Pool {
         reserve_0: u128,
         reserve_1: u128,
         fee: u32,
+        last_active_at_block: u64,
     ) -> UniswapV2Pool {
         UniswapV2Pool {
             address,
@@ -182,6 +187,8 @@ impl UniswapV2Pool {
             reserve_0,
             reserve_1,
             fee,
+            last_active_at: 0,
+            last_active_at_block,
         }
     }
 
@@ -189,6 +196,7 @@ impl UniswapV2Pool {
     pub async fn new_from_address<M: Middleware>(
         pair_address: H160,
         fee: u32,
+        block_number: Option<U64>,
         middleware: Arc<M>,
     ) -> Result<Self, AMMError<M>> {
         let mut pool = UniswapV2Pool {
@@ -200,6 +208,8 @@ impl UniswapV2Pool {
             reserve_0: 0,
             reserve_1: 0,
             fee,
+            last_active_at: 0,
+            last_active_at_block: block_number.unwrap_or_default().as_u64(),
         };
 
         pool.populate_data(None, middleware.clone()).await?;
@@ -218,8 +228,9 @@ impl UniswapV2Pool {
         let event_signature = log.topics[0];
 
         if event_signature == PAIR_CREATED_EVENT_SIGNATURE {
+            let block_number = log.block_number;
             let pair_created_event = factory::PairCreatedFilter::decode_log(&RawLog::from(log))?;
-            UniswapV2Pool::new_from_address(pair_created_event.pair, fee, middleware).await
+            UniswapV2Pool::new_from_address(pair_created_event.pair, fee, block_number, middleware).await
         } else {
             Err(EventLogError::InvalidEventSignature)?
         }
@@ -229,6 +240,7 @@ impl UniswapV2Pool {
         let event_signature = log.topics[0];
 
         if event_signature == PAIR_CREATED_EVENT_SIGNATURE {
+            let block_number = log.block_number.unwrap_or_default().as_u64();
             let pair_created_event = factory::PairCreatedFilter::decode_log(&RawLog::from(log))?;
 
             Ok(UniswapV2Pool {
@@ -240,6 +252,8 @@ impl UniswapV2Pool {
                 reserve_0: 0,
                 reserve_1: 0,
                 fee: 0,
+                last_active_at: 0,
+                last_active_at_block: block_number,
             })
         } else {
             Err(EventLogError::InvalidEventSignature)?
@@ -260,17 +274,15 @@ impl UniswapV2Pool {
     pub async fn get_reserves<M: Middleware>(
         &self,
         middleware: Arc<M>,
-    ) -> Result<(u128, u128), AMMError<M>> {
+    ) -> Result<(u128, u128, u32), AMMError<M>> {
         //Initialize a new instance of the Pool
         let v2_pair = IUniswapV2Pair::new(self.address, middleware);
         // Make a call to get the reserves
-        let (reserve_0, reserve_1, _) = v2_pair
+        v2_pair
             .get_reserves()
             .call()
             .await
-            .map_err(|e| AMMError::ContractError("get_reserves", self.address, e))?;
-
-        Ok((reserve_0, reserve_1))
+            .map_err(|e| AMMError::ContractError("get_reserves", self.address, e))
     }
 
     pub async fn get_token_decimals<M: Middleware>(
@@ -532,6 +544,7 @@ mod tests {
             H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc")?,
             300,
             middleware.clone(),
+            Some(12345678),
         )
         .await?;
 
@@ -550,6 +563,7 @@ mod tests {
         );
         assert_eq!(pool.token_b_decimals, 18);
         assert_eq!(pool.fee, 300);
+        assert_eq!(pool.last_active_at_block, 12345678);
 
         Ok(())
     }
@@ -597,6 +611,8 @@ mod tests {
             reserve_0: 23595096345912178729927,
             reserve_1: 154664232014390554564,
             fee: 300,
+            last_active_at: 1234567890,
+            last_active_at_block: 12345678,
         };
 
         assert!(x.calculate_price(token_a)? != 0.0);

@@ -53,6 +53,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
     path_to_checkpoint: &str,
     step: u64,
     middleware: Arc<M>,
+    block_threshold: u64,
 ) -> Result<(Vec<Factory>, Vec<AMM>), AMMError<M>> {
     let current_block = middleware
         .get_block_number()
@@ -76,6 +77,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
                 uniswap_v2_pools,
                 Some(current_block),
                 middleware.clone(),
+                block_threshold,
             )
             .await,
         );
@@ -88,6 +90,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
                 uniswap_v3_pools,
                 Some(current_block),
                 middleware.clone(),
+                block_threshold,
             )
             .await,
         );
@@ -109,6 +112,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
             current_block,
             step,
             middleware.clone(),
+            block_threshold,
         )
         .await,
     );
@@ -144,6 +148,7 @@ pub async fn get_new_amms_from_range<M: 'static + Middleware>(
     to_block: u64,
     step: u64,
     middleware: Arc<M>,
+    block_threshold: u64,
 ) -> Vec<JoinHandle<Result<Vec<AMM>, AMMError<M>>>> {
     //Create the filter with all the pair created events
     //Aggregate the populated pools from each thread
@@ -165,6 +170,9 @@ pub async fn get_new_amms_from_range<M: 'static + Middleware>(
             //Clean empty pools
             amms = sync::remove_empty_amms(amms);
 
+            //Clean outdated pools
+            amms = sync::remove_outdated_amms(amms, to_block - block_threshold, middleware).await?;
+
             Ok::<_, AMMError<M>>(amms)
         }));
     }
@@ -176,6 +184,7 @@ pub async fn batch_sync_amms_from_checkpoint<M: 'static + Middleware>(
     mut amms: Vec<AMM>,
     block_number: Option<u64>,
     middleware: Arc<M>,
+    block_threshold: u64,
 ) -> JoinHandle<Result<Vec<AMM>, AMMError<M>>> {
     let factory = match amms[0] {
         AMM::UniswapV2Pool(_) => Some(Factory::UniswapV2Factory(UniswapV2Factory::new(
@@ -198,11 +207,18 @@ pub async fn batch_sync_amms_from_checkpoint<M: 'static + Middleware>(
             if amms_are_congruent(&amms) {
                 //Get all pool data via batched calls
                 factory
-                    .populate_amm_data(&mut amms, block_number, middleware)
+                    .populate_amm_data(&mut amms, block_number, middleware.clone())
                     .await?;
 
                 //Clean empty pools
                 amms = sync::remove_empty_amms(amms);
+
+                //Clean outdated pools
+                amms = sync::remove_outdated_amms(
+                    amms, 
+                    block_number.unwrap_or(block_threshold) - block_threshold,
+                    middleware,
+                ).await?;
 
                 Ok::<_, AMMError<M>>(amms)
             } else {

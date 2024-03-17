@@ -17,6 +17,7 @@ pub async fn sync_amms<M: 'static + Middleware>(
     middleware: Arc<M>,
     checkpoint_path: Option<&str>,
     step: u64,
+    block_threshold: u64,
 ) -> Result<(Vec<AMM>, u64), AMMError<M>> {
     let spinner = Spinner::new(spinners::Dots, "Syncing AMMs...", Color::Blue);
 
@@ -44,6 +45,9 @@ pub async fn sync_amms<M: 'static + Middleware>(
 
             //Clean empty pools
             amms = remove_empty_amms(amms);
+
+            //Clean outdated pools
+            amms = remove_outdated_amms(amms, current_block - block_threshold, middleware).await?;
 
             // If the factory is UniswapV2, set the fee for each pool according to the factory fee
             if let Factory::UniswapV2Factory(factory) = factory {
@@ -108,7 +112,7 @@ pub async fn populate_amms<M: Middleware>(
     if amms_are_congruent(amms) {
         match amms[0] {
             AMM::UniswapV2Pool(_) => {
-                let step = 127; //Max batch size for call
+                let step = 109; //Max batch size for call
                 for amm_chunk in amms.chunks_mut(step) {
                     uniswap_v2::batch_request::get_amm_data_batch_request(
                         amm_chunk,
@@ -169,4 +173,43 @@ pub fn remove_empty_amms(amms: Vec<AMM>) -> Vec<AMM> {
     }
 
     cleaned_amms
+}
+
+pub async fn remove_outdated_amms<M: Middleware>(
+    amms: Vec<AMM>, 
+    min_block: u64, 
+    middleware: Arc<M>,
+) -> Result<Vec<AMM>, AMMError<M>> {
+    let min_block_ts = if let Some(min_block) = middleware
+        .get_block(min_block)
+        .await
+        .map_err(AMMError::MiddlewareError)? {
+            min_block.timestamp.as_u32()
+        } else {
+            return Err(AMMError::BlockNumberNotFound)
+        };
+
+    let mut cleaned_amms = vec![];
+
+    for amm in amms.into_iter() {
+        match amm {
+            AMM::UniswapV2Pool(ref uniswap_v2_pool) => {
+                if uniswap_v2_pool.last_active_at_block >= min_block || uniswap_v2_pool.last_active_at >= min_block_ts {
+                    cleaned_amms.push(amm)
+                }
+            }
+            AMM::UniswapV3Pool(ref uniswap_v3_pool) => {
+                if uniswap_v3_pool.last_active_at_block.unwrap_or_default() >= min_block {
+                    cleaned_amms.push(amm)
+                }
+            }
+            AMM::ERC4626Vault(ref erc4626_vault) => {
+                if erc4626_vault.last_active_at_block.unwrap_or_default() >= min_block {
+                    cleaned_amms.push(amm)
+                }
+            }
+        }
+    }
+
+    Ok(cleaned_amms)
 }

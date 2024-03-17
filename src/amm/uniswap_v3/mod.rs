@@ -98,6 +98,7 @@ pub struct UniswapV3Pool {
     pub tick_spacing: i32,
     pub tick_bitmap: HashMap<i16, U256>,
     pub ticks: HashMap<i32, Info>,
+    pub last_active_at_block: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -473,6 +474,7 @@ impl UniswapV3Pool {
         tick_spacing: i32,
         tick_bitmap: HashMap<i16, U256>,
         ticks: HashMap<i32, Info>,
+        last_active_at_block: Option<u64>,
     ) -> UniswapV3Pool {
         UniswapV3Pool {
             address,
@@ -487,6 +489,7 @@ impl UniswapV3Pool {
             tick_spacing,
             tick_bitmap,
             ticks,
+            last_active_at_block,
         }
     }
 
@@ -509,6 +512,7 @@ impl UniswapV3Pool {
             fee: 0,
             tick_bitmap: HashMap::new(),
             ticks: HashMap::new(),
+            last_active_at_block: Some(creation_block),
         };
 
         //We need to get tick spacing before populating tick data because tick spacing can not be uninitialized when syncing burn and mint logs
@@ -556,6 +560,7 @@ impl UniswapV3Pool {
         let event_signature = log.topics[0];
 
         if event_signature == POOL_CREATED_EVENT_SIGNATURE {
+            let block_number = log.block_number.as_ref().map(U64::as_u64);
             let pool_created_event = PoolCreatedFilter::decode_log(&RawLog::from(log))?;
 
             Ok(UniswapV3Pool {
@@ -571,6 +576,7 @@ impl UniswapV3Pool {
                 tick: 0,
                 tick_bitmap: HashMap::new(),
                 ticks: HashMap::new(),
+                last_active_at_block: block_number,
             })
         } else {
             Err(EventLogError::InvalidEventSignature)
@@ -806,6 +812,7 @@ impl UniswapV3Pool {
         .map_err(|e| 
             EventLogError::PoolArithmeticError(self.address, block_number, e)
         )?;
+        self.last_active_at_block = Some(block_number.as_u64());
 
         Ok(())
     }
@@ -822,6 +829,7 @@ impl UniswapV3Pool {
         .map_err(|e| 
             EventLogError::PoolArithmeticError(self.address, block_number, e)
         )?;
+        self.last_active_at_block = Some(block_number.as_u64());
 
         Ok(())
     }
@@ -925,11 +933,13 @@ impl UniswapV3Pool {
     }
 
     pub fn sync_from_swap_log(&mut self, log: Log) -> Result<(), AbiError> {
+        let block_number = log.block_number.as_ref().map(U64::as_u64);
         let swap_event = SwapFilter::decode_log(&RawLog::from(log))?;
 
         self.sqrt_price = swap_event.sqrt_price_x96;
         self.liquidity = swap_event.liquidity;
         self.tick = swap_event.tick;
+        self.last_active_at_block = block_number;
 
         Ok(())
     }

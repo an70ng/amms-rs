@@ -115,6 +115,7 @@ impl AutomatedMarketMakerFactory for UniswapV3Factory {
     }
 
     fn new_empty_amm_from_log(&self, log: Log) -> Result<AMM, ethers::abi::Error> {
+        let block_number = log.block_number.as_ref().map(U64::as_u64);
         let pool_created_event = PoolCreatedFilter::decode_log(&RawLog::from(log))?;
 
         Ok(AMM::UniswapV3Pool(UniswapV3Pool {
@@ -130,6 +131,7 @@ impl AutomatedMarketMakerFactory for UniswapV3Factory {
             tick: 0,
             tick_bitmap: HashMap::new(),
             ticks: HashMap::new(),
+            last_active_at_block: block_number,
         }))
     }
 }

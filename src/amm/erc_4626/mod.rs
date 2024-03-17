@@ -7,7 +7,7 @@ use ethers::{
     abi::RawLog,
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256},
+    types::{Log, H160, H256, U64, U256},
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +52,7 @@ pub struct ERC4626Vault {
     pub asset_reserve: U256, // total balance of asset tokens held by vault
     pub deposit_fee: u32,    // deposit fee in basis points
     pub withdraw_fee: u32,   // withdrawal fee in basis points
+    pub last_active_at_block: Option<u64>,
 }
 
 #[async_trait]
@@ -80,15 +81,18 @@ impl AutomatedMarketMaker for ERC4626Vault {
 
     fn sync_from_log(&mut self, log: Log) -> Result<(), EventLogError> {
         let event_signature = log.topics[0];
+        let block_number = log.block_number;
         if event_signature == DEPOSIT_EVENT_SIGNATURE {
             let deposit_event = DepositFilter::decode_log(&RawLog::from(log))?;
 
             self.asset_reserve += deposit_event.assets;
             self.vault_reserve += deposit_event.shares;
+            self.last_active_at_block = block_number.as_ref().map(U64::as_u64);
         } else if event_signature == WITHDRAW_EVENT_SIGNATURE {
             let withdraw_filter = WithdrawFilter::decode_log(&RawLog::from(log))?;
             self.asset_reserve -= withdraw_filter.assets;
             self.vault_reserve -= withdraw_filter.shares;
+            self.last_active_at_block = block_number.as_ref().map(U64::as_u64);
         } else {
             return Err(EventLogError::InvalidEventSignature);
         }
@@ -156,6 +160,7 @@ impl ERC4626Vault {
         asset_reserve: U256,
         deposit_fee: u32,
         withdraw_fee: u32,
+        last_active_at_block: Option<u64>,
     ) -> ERC4626Vault {
         ERC4626Vault {
             vault_token,
@@ -166,11 +171,13 @@ impl ERC4626Vault {
             asset_reserve,
             deposit_fee,
             withdraw_fee,
+            last_active_at_block,
         }
     }
 
     pub async fn new_from_address<M: Middleware>(
         vault_token: H160,
+        block_number: Option<u64>,
         middleware: Arc<M>,
     ) -> Result<Self, AMMError<M>> {
         let mut vault = ERC4626Vault {
@@ -182,6 +189,7 @@ impl ERC4626Vault {
             asset_reserve: U256::zero(),
             deposit_fee: 0,
             withdraw_fee: 0,
+            last_active_at_block: block_number,
         };
 
         vault.populate_data(None, middleware.clone()).await?;

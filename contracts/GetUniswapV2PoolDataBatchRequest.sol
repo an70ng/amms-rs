@@ -32,6 +32,7 @@ contract GetUniswapV2PoolDataBatchRequest {
         uint8 tokenBDecimals;
         uint112 reserve0;
         uint112 reserve1;
+        uint32 blockTimestampLast;
     }
 
     constructor(address[] memory pools) {
@@ -106,7 +107,7 @@ contract GetUniswapV2PoolDataBatchRequest {
             }
 
             // Get reserves
-            (poolData.reserve0, poolData.reserve1, ) = IUniswapV2Pair(
+            (poolData.reserve0, poolData.reserve1, poolData.blockTimestampLast) = IUniswapV2Pair(
                 poolAddress
             ).getReserves();
 
