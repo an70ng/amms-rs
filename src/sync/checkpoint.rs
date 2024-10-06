@@ -54,7 +54,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
     step: u64,
     middleware: Arc<M>,
     block_threshold: u64,
-) -> Result<(Vec<Factory>, Vec<AMM>), AMMError<M>> {
+) -> Result<(Vec<Factory>, Vec<AMM>, u64), AMMError<M>> {
     let current_block = middleware
         .get_block_number()
         .await
@@ -139,7 +139,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
         path_to_checkpoint,
     )?;
 
-    Ok((checkpoint.factories, aggregated_amms))
+    Ok((checkpoint.factories, aggregated_amms, current_block))
 }
 
 pub async fn get_new_amms_from_range<M: 'static + Middleware>(
